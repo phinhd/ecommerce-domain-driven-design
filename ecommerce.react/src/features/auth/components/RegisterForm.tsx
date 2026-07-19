@@ -21,7 +21,7 @@ export const RegisterForm = () => {
     setIsLoading(true);
     try {
       await register({ email, password });
-      showToast('Đăng ký thành công!', 'success');
+      showToast('Registration successful!', 'success');
       // Auto login after register
       try {
         await login({ email, password });

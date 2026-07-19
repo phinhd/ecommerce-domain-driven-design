@@ -12,7 +12,7 @@ export const CreateProductPage = () => {
   const handleSubmit = async (data: Omit<Product, 'id' | 'createdByUserId'>) => {
     try {
       await createMutation.mutateAsync(data);
-      showToast('Thêm sản phẩm thành công!', 'success');
+      showToast('Product created successfully!', 'success');
       navigate('/my-products');
     } catch (error) {
       console.error('Failed to create product', error);

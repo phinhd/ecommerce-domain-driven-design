@@ -20,7 +20,7 @@ export const LoginForm = () => {
     setIsLoading(true);
     try {
       await login({ email, password });
-      showToast('Đăng nhập thành công!', 'success');
+      showToast('Login successful!', 'success');
       navigate('/');
     } catch {
       setError('Invalid email or password');

@@ -39,7 +39,7 @@ export const ProductList = ({ mode }: ProductListProps) => {
     if (deleteId) {
       try {
         await deleteMutation.mutateAsync(deleteId);
-        showToast('Xóa sản phẩm thành công!', 'success');
+        showToast('Product deleted successfully!', 'success');
         setDeleteId(null);
       } catch {
         // Global error handler will show toast
@@ -140,7 +140,7 @@ export const ProductList = ({ mode }: ProductListProps) => {
                 try {
                   await createOrderMutation.mutateAsync({ productId: orderId, quantity });
                   setOrderId(null);
-                  showToast('Đặt hàng thành công!', 'success');
+                  showToast('Product ordered successfully!', 'success');
                 } catch {
                   // Global handler handles error toast
                 }
