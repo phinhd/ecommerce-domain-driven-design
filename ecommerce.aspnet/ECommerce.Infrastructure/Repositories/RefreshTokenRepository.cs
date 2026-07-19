@@ -1,12 +1,13 @@
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using ECommerce.Infrastructure.Persistence;
 
 namespace ECommerce.Infrastructure.Repositories;
 
 public class RefreshTokenRepository : Repository<RefreshToken>, IRefreshTokenRepository
 {
-    public RefreshTokenRepository(DbContext context) : base(context)
+    public RefreshTokenRepository(ECommerceDbContext context) : base(context)
     {
     }
 

@@ -1,16 +1,17 @@
 using ECommerce.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using ECommerce.Infrastructure.Persistence;
 
 namespace ECommerce.Infrastructure.Repositories;
 
 public class UnitOfWork : IUnitOfWork
 {
-    private readonly DbContext _context;
+    private readonly ECommerceDbContext _context;
     private IUserRepository? _userRepository;
     private IProductRepository? _productRepository;
     private IRefreshTokenRepository? _refreshTokenRepository;
 
-    public UnitOfWork(DbContext context)
+    public UnitOfWork(ECommerceDbContext context)
     {
         _context = context;
     }

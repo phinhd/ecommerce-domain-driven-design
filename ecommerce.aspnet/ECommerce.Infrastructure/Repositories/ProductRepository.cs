@@ -1,12 +1,13 @@
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using ECommerce.Infrastructure.Persistence;
 
 namespace ECommerce.Infrastructure.Repositories;
 
 public class ProductRepository : Repository<Product>, IProductRepository
 {
-    public ProductRepository(DbContext context) : base(context)
+    public ProductRepository(ECommerceDbContext context) : base(context)
     {
     }
 

@@ -1,14 +1,15 @@
 using ECommerce.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using ECommerce.Infrastructure.Persistence;
 
 namespace ECommerce.Infrastructure.Repositories;
 
 public class Repository<T> : IRepository<T> where T : class
 {
-    protected readonly DbContext _context;
+    protected readonly ECommerceDbContext _context;
     protected readonly DbSet<T> _dbSet;
 
-    public Repository(DbContext context)
+    public Repository(ECommerceDbContext context)
     {
         _context = context;
         _dbSet = _context.Set<T>();

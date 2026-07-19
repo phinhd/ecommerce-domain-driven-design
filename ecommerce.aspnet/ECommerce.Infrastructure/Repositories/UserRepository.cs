@@ -1,12 +1,13 @@
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using ECommerce.Infrastructure.Persistence;
 
 namespace ECommerce.Infrastructure.Repositories;
 
 public class UserRepository : Repository<User>, IUserRepository
 {
-    public UserRepository(DbContext context) : base(context)
+    public UserRepository(ECommerceDbContext context) : base(context)
     {
     }
 
