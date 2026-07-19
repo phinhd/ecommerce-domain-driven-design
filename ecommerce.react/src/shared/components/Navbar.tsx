@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../features/auth/hooks/useAuth';
 import { Button } from './Button';
@@ -22,8 +21,11 @@ export const Navbar = () => {
               <span className="ml-2 text-sm font-medium text-gray-500 uppercase tracking-wider hidden sm:block">Store</span>
             </Link>
             <div className="hidden md:ml-8 md:flex md:space-x-8">
-              <Link to="/products" className="text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 border-indigo-500 text-sm font-medium">
-                Products
+              <Link to="/store" className="text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-gray-300 text-sm font-medium">
+                Store
+              </Link>
+              <Link to="/my-products" className="text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-gray-300 text-sm font-medium">
+                My Products
               </Link>
             </div>
           </div>

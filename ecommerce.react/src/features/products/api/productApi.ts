@@ -2,11 +2,13 @@ import { apiClient } from '../../../shared/lib/axios';
 import type { Product, PagedResponse } from '../types';
 
 export const productApi = {
-  getProducts: async (params: { page: number; pageSize: number; search?: string }): Promise<PagedResponse<Product>> => {
-    const queryParams: Record<string, string | number> = { page: params.page, pageSize: params.pageSize };
+  getProducts: async (params: { page: number; pageSize: number; search?: string; mine?: boolean; excludeMine?: boolean }): Promise<PagedResponse<Product>> => {
+    const queryParams: Record<string, string | number | boolean> = { page: params.page, pageSize: params.pageSize };
     if (params.search?.trim()) {
       queryParams.search = params.search.trim();
     }
+    if (params.mine !== undefined) queryParams.mine = params.mine;
+    if (params.excludeMine !== undefined) queryParams.excludeMine = params.excludeMine;
     const { data } = await apiClient.get<PagedResponse<Product>>('/api/products', { params: queryParams });
     return data;
   },

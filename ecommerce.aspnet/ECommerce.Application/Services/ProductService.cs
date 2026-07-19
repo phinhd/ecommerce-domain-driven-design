@@ -16,9 +16,28 @@ public class ProductService : IProductService
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<PagedResponse<ProductResponse>> GetProductsAsync(string? search, int page, int pageSize)
+    public async Task<PagedResponse<ProductResponse>> GetProductsAsync(string? search, int page, int pageSize, bool mine = false, bool excludeMine = false, Guid? currentUserId = null)
     {
-        var (items, totalCount) = await _unitOfWork.Products.SearchAsync(search, page, pageSize);
+        if ((mine || excludeMine) && !currentUserId.HasValue)
+        {
+            throw new BadRequestException("Current user is not authenticated.");
+        }
+
+        Guid? filterUserId = null;
+        bool excludeUser = false;
+
+        if (mine)
+        {
+            filterUserId = currentUserId;
+            excludeUser = false;
+        }
+        else if (excludeMine)
+        {
+            filterUserId = currentUserId;
+            excludeUser = true;
+        }
+
+        var (items, totalCount) = await _unitOfWork.Products.SearchAsync(search, page, pageSize, filterUserId, excludeUser);
 
         var productResponses = items.Select(MapToResponse);
 

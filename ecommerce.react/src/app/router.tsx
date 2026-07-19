@@ -1,4 +1,3 @@
-import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginForm } from '../features/auth/components/LoginForm';
 import { RegisterForm } from '../features/auth/components/RegisterForm';
@@ -17,9 +16,11 @@ export const router = createBrowserRouter([
       {
         element: <ProtectedRoute />,
         children: [
-          { path: 'products', element: <ProductList /> },
+          { path: 'products', element: <Navigate to="/store" /> },
+          { path: 'store', element: <ProductList mode="store" /> },
+          { path: 'my-products', element: <ProductList mode="my-products" /> },
           { path: 'products/new', element: <CreateProductPage /> },
-          { path: '/', element: <Navigate to="/products" /> },
+          { path: '/', element: <Navigate to="/store" /> },
         ],
       },
     ],

@@ -17,9 +17,19 @@ public class ProductController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] bool mine = false, [FromQuery] bool excludeMine = false)
     {
-        var result = await _productService.GetProductsAsync(search, page, pageSize);
+        Guid? currentUserId = null;
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(userIdString, out var userId))
+            {
+                currentUserId = userId;
+            }
+        }
+        
+        var result = await _productService.GetProductsAsync(search, page, pageSize, mine, excludeMine, currentUserId);
         return Ok(result);
     }
 

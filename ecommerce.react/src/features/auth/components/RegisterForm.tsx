@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Input } from '../../../shared/components/Input';
 import { Button } from '../../../shared/components/Button';
+import { useToast } from '../../../shared/components/Toast';
 
 export const RegisterForm = () => {
   const { register, login } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,6 +21,7 @@ export const RegisterForm = () => {
     setIsLoading(true);
     try {
       await register({ email, password });
+      showToast('Đăng ký thành công!', 'success');
       // Auto login after register
       try {
         await login({ email, password });

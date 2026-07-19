@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { emitToast } from './toastBus';
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -89,10 +90,31 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         clearAuth();
+        emitToast('Your session has expired. Please log in again.');
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
       }
+    }
+
+    const status = error.response?.status;
+    const backendMessage = error.response?.data?.message as string | undefined;
+
+    if (status === 401) {
+      // 401 that reached here means no refresh possible
+      emitToast(backendMessage ?? 'Your session has expired. Please log in again.');
+    } else if (status === 403) {
+      emitToast(backendMessage ?? 'Bạn không có quyền thực hiện hành động này.');
+    } else if (status === 404) {
+      emitToast(backendMessage ?? 'Không tìm thấy tài nguyên.');
+    } else if (status === 400) {
+      emitToast(backendMessage ?? 'Yêu cầu không hợp lệ.');
+    } else if (status && status >= 500) {
+      emitToast(backendMessage ?? 'Đã xảy ra lỗi máy chủ. Vui lòng thử lại sau.');
+    } else if (!error.response) {
+      emitToast('Không thể kết nối tới máy chủ.');
+    } else if (backendMessage) {
+      emitToast(backendMessage);
     }
 
     return Promise.reject(error);

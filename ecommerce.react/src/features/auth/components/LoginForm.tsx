@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Input } from '../../../shared/components/Input';
 import { Button } from '../../../shared/components/Button';
+import { useToast } from '../../../shared/components/Toast';
 
 export const LoginForm = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +20,7 @@ export const LoginForm = () => {
     setIsLoading(true);
     try {
       await login({ email, password });
+      showToast('Đăng nhập thành công!', 'success');
       navigate('/');
     } catch {
       setError('Invalid email or password');

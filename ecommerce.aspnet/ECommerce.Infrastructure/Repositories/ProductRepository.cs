@@ -11,7 +11,7 @@ public class ProductRepository : Repository<Product>, IProductRepository
     {
     }
 
-    public async Task<(IEnumerable<Product> Items, int TotalCount)> SearchAsync(string? keyword, int page, int pageSize)
+    public async Task<(IEnumerable<Product> Items, int TotalCount)> SearchAsync(string? keyword, int page, int pageSize, Guid? filterUserId = null, bool excludeUser = false)
     {
         var query = _dbSet.Where(p => p.DeletedAt == null);
 
@@ -19,6 +19,14 @@ public class ProductRepository : Repository<Product>, IProductRepository
         {
             var lowerKeyword = keyword.ToLower();
             query = query.Where(p => p.Name.ToLower().Contains(lowerKeyword));
+        }
+
+        if (filterUserId.HasValue)
+        {
+            if (excludeUser)
+                query = query.Where(p => p.CreatedByUserId != filterUserId.Value);
+            else
+                query = query.Where(p => p.CreatedByUserId == filterUserId.Value);
         }
 
         var totalCount = await query.CountAsync();

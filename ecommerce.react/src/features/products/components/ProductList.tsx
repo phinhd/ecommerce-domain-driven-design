@@ -1,22 +1,35 @@
 import { useState } from 'react';
 import { useProducts, useDeleteProduct } from '../hooks/useProducts';
+import { useCreateOrder } from '../../orders/hooks/useOrders';
 import { Button } from '../../../shared/components/Button';
 import { useDebounce } from '../../../shared/hooks/useDebounce';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { useToast } from '../../../shared/components/Toast';
 
 const PLACEHOLDER_IMAGE = 'https://placehold.co/400x400';
 
-export const ProductList = () => {
+interface ProductListProps {
+  mode: 'my-products' | 'store';
+}
+
+export const ProductList = ({ mode }: ProductListProps) => {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 500);
-  const { data, isLoading } = useProducts({ page, pageSize: 10, search: debouncedSearch });
+  
+  const mine = mode === 'my-products' ? true : undefined;
+  const excludeMine = mode === 'store' ? true : undefined;
+
+  const { data, isLoading } = useProducts({ page, pageSize: 10, search: debouncedSearch, mine, excludeMine });
   const deleteMutation = useDeleteProduct();
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const createOrderMutation = useCreateOrder();
+  const { showToast } = useToast();
 
   const handleDeleteClick = (id: string) => {
     setDeleteId(id);
@@ -26,14 +39,10 @@ export const ProductList = () => {
     if (deleteId) {
       try {
         await deleteMutation.mutateAsync(deleteId);
+        showToast('Xóa sản phẩm thành công!', 'success');
         setDeleteId(null);
-      } catch (err: unknown) {
-        const error = err as { response?: { status?: number; data?: { message?: string } } };
-        if (error?.response?.status === 403) {
-          setErrorMessage(error.response.data?.message || 'You do not have permission to delete this product.');
-        } else {
-          setErrorMessage('Failed to delete product. Please try again.');
-        }
+      } catch {
+        // Global error handler will show toast
         setDeleteId(null);
       }
     }
@@ -47,19 +56,6 @@ export const ProductList = () => {
 
   return (
     <div className="space-y-6">
-      {errorMessage && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between">
-          <span>{errorMessage}</span>
-          <button
-            type="button"
-            className="ml-4 text-red-500 hover:text-red-700"
-            onClick={() => setErrorMessage(null)}
-            aria-label="Dismiss error"
-          >
-            ×
-          </button>
-        </div>
-      )}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="relative w-full sm:w-96">
           <input
@@ -73,7 +69,9 @@ export const ProductList = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
-        <Button onClick={() => window.location.href = '/products/new'}>Create Product</Button>
+        {mode === 'my-products' && (
+          <Button onClick={() => window.location.href = '/products/new'}>Create Product</Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -100,10 +98,15 @@ export const ProductList = () => {
                   <p className="text-gray-500 text-sm">Qty: {product.quantity}</p>
                 </div>
               </div>
-              {user?.id === product.createdByUserId && (
+              {mode === 'my-products' && user?.id === product.createdByUserId && (
                 <div className="flex gap-2 mt-auto">
                   <Button variant="secondary" className="flex-1" onClick={() => window.location.href = `/products/${product.id}/edit`}>Edit</Button>
                   <Button variant="danger" className="flex-1" onClick={() => handleDeleteClick(product.id)}>Delete</Button>
+                </div>
+              )}
+              {mode === 'store' && user?.id !== product.createdByUserId && (
+                <div className="flex gap-2 mt-auto">
+                  <Button variant="primary" className="flex-1" onClick={() => setOrderId(product.id)}>Order</Button>
                 </div>
               )}
             </div>
@@ -118,6 +121,34 @@ export const ProductList = () => {
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />
+
+      {orderId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-96">
+            <h2 className="text-lg font-bold mb-4">Order Product</h2>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+            <input
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(parseInt(e.target.value))}
+              className="w-full p-2 border border-gray-300 rounded mb-4"
+            />
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1" onClick={() => setOrderId(null)}>Cancel</Button>
+              <Button variant="primary" className="flex-1" isLoading={createOrderMutation.isPending} onClick={async () => {
+                try {
+                  await createOrderMutation.mutateAsync({ productId: orderId, quantity });
+                  setOrderId(null);
+                  showToast('Đặt hàng thành công!', 'success');
+                } catch {
+                  // Global handler handles error toast
+                }
+              }}>Confirm</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-center gap-4 mt-8">
         <Button variant="secondary" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
