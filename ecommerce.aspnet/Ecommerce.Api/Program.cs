@@ -69,6 +69,8 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 await DataSeeder.SeedAsync(app.Services);
 
 // Configure the HTTP request pipeline.
@@ -93,3 +95,5 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }

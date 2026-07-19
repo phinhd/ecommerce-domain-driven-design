@@ -47,7 +47,7 @@ public class AuthService : IAuthService
     {
         var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
         if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
-            throw new UnauthorizedAccessException("Invalid credentials.");
+            throw new Exceptions.UnauthorizedException("Invalid credentials.");
 
         var accessToken = _jwtTokenService.GenerateAccessToken(user);
         var refreshTokenRaw = _jwtTokenService.GenerateRefreshToken();
