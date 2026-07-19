@@ -23,12 +23,11 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred.");
             await HandleExceptionAsync(context, ex);
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         var statusCode = exception switch
         {
@@ -38,6 +37,15 @@ public class ExceptionHandlingMiddleware
             BadRequestException => HttpStatusCode.BadRequest,
             _ => HttpStatusCode.InternalServerError
         };
+
+        if (statusCode == HttpStatusCode.InternalServerError)
+        {
+            _logger.LogError(exception, "An unhandled exception occurred.");
+        }
+        else
+        {
+            _logger.LogWarning("Handled exception: {Message} (Status {StatusCode})", exception.Message, statusCode);
+        }
 
         var response = new
         {
