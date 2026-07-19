@@ -39,7 +39,8 @@ public class ProductController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateProduct([FromBody] CreateProductRequest request)
     {
-        var product = await _productService.CreateProductAsync(request);
+        var userId = GetUserId();
+        var product = await _productService.CreateProductAsync(request, userId);
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
     }
 
@@ -47,7 +48,8 @@ public class ProductController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] UpdateProductRequest request)
     {
-        var product = await _productService.UpdateProductAsync(id, request);
+        var userId = GetUserId();
+        var product = await _productService.UpdateProductAsync(id, request, userId);
         if (product == null)
         {
             return NotFound();
@@ -60,12 +62,23 @@ public class ProductController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProduct(Guid id)
     {
-        var result = await _productService.DeleteProductAsync(id);
+        var userId = GetUserId();
+        var result = await _productService.DeleteProductAsync(id, userId);
         if (!result)
         {
             return NotFound();
         }
 
         return NoContent();
+    }
+
+    private Guid GetUserId()
+    {
+        var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
+        {
+            throw new UnauthorizedAccessException("User is not authenticated.");
+        }
+        return userId;
     }
 }

@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useProducts, useDeleteProduct } from '../hooks/useProducts';
 import { Button } from '../../../shared/components/Button';
 import { useDebounce } from '../../../shared/hooks/useDebounce';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
+import { useAuth } from '../../auth/hooks/useAuth';
 
 const PLACEHOLDER_IMAGE = 'https://placehold.co/400x400';
 
 export const ProductList = () => {
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 500);
@@ -14,6 +16,7 @@ export const ProductList = () => {
   const deleteMutation = useDeleteProduct();
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleDeleteClick = (id: string) => {
     setDeleteId(id);
@@ -21,8 +24,18 @@ export const ProductList = () => {
 
   const handleConfirmDelete = async () => {
     if (deleteId) {
-      await deleteMutation.mutateAsync(deleteId);
-      setDeleteId(null);
+      try {
+        await deleteMutation.mutateAsync(deleteId);
+        setDeleteId(null);
+      } catch (err: unknown) {
+        const error = err as { response?: { status?: number; data?: { message?: string } } };
+        if (error?.response?.status === 403) {
+          setErrorMessage(error.response.data?.message || 'You do not have permission to delete this product.');
+        } else {
+          setErrorMessage('Failed to delete product. Please try again.');
+        }
+        setDeleteId(null);
+      }
     }
   };
 
@@ -34,6 +47,19 @@ export const ProductList = () => {
 
   return (
     <div className="space-y-6">
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between">
+          <span>{errorMessage}</span>
+          <button
+            type="button"
+            className="ml-4 text-red-500 hover:text-red-700"
+            onClick={() => setErrorMessage(null)}
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="relative w-full sm:w-96">
           <input
@@ -74,10 +100,12 @@ export const ProductList = () => {
                   <p className="text-gray-500 text-sm">Qty: {product.quantity}</p>
                 </div>
               </div>
-              <div className="flex gap-2 mt-auto">
-                <Button variant="secondary" className="flex-1" onClick={() => window.location.href = `/products/${product.id}/edit`}>Edit</Button>
-                <Button variant="danger" className="flex-1" onClick={() => handleDeleteClick(product.id)}>Delete</Button>
-              </div>
+              {user?.id === product.createdByUserId && (
+                <div className="flex gap-2 mt-auto">
+                  <Button variant="secondary" className="flex-1" onClick={() => window.location.href = `/products/${product.id}/edit`}>Edit</Button>
+                  <Button variant="danger" className="flex-1" onClick={() => handleDeleteClick(product.id)}>Delete</Button>
+                </div>
+              )}
             </div>
           </div>
         ))}

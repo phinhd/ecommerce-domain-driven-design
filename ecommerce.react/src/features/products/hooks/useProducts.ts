@@ -12,7 +12,7 @@ export const useProducts = (params: { page: number; pageSize: number; search?: s
 export const useCreateProduct = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (product: Omit<Product, 'id'>) => productApi.createProduct(product),
+    mutationFn: (product: Omit<Product, 'id' | 'createdByUserId'>) => productApi.createProduct(product),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
     },

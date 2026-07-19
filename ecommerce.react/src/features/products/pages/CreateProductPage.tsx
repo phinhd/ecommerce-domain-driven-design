@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProductForm } from '../components/ProductForm';
 import { useCreateProduct } from '../hooks/useProducts';
@@ -8,7 +7,7 @@ export const CreateProductPage = () => {
   const navigate = useNavigate();
   const createMutation = useCreateProduct();
 
-  const handleSubmit = async (data: Omit<Product, 'id'>) => {
+  const handleSubmit = async (data: Omit<Product, 'id' | 'createdByUserId'>) => {
     try {
       await createMutation.mutateAsync(data);
       navigate('/products');

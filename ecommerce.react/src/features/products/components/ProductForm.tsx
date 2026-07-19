@@ -5,7 +5,7 @@ import type { Product } from '../types';
 
 interface ProductFormProps {
   initialData?: Partial<Product>;
-  onSubmit: (data: Omit<Product, 'id'>) => void;
+  onSubmit: (data: Omit<Product, 'id' | 'createdByUserId'>) => void;
   isLoading?: boolean;
 }
 

@@ -11,7 +11,7 @@ export const productApi = {
     return data;
   },
 
-  createProduct: async (product: Omit<Product, 'id'>): Promise<Product> => {
+  createProduct: async (product: Omit<Product, 'id' | 'createdByUserId'>): Promise<Product> => {
     const { data } = await apiClient.post<Product>('/api/products', product);
     return data;
   },

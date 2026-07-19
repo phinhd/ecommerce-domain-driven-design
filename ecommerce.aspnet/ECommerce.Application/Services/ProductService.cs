@@ -1,5 +1,6 @@
 using ECommerce.Application.DTOs.Common;
 using ECommerce.Application.DTOs.Product;
+using ECommerce.Application.Exceptions;
 using ECommerce.Application.Interfaces;
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
@@ -35,7 +36,7 @@ public class ProductService : IProductService
         return MapToResponse(product);
     }
 
-    public async Task<ProductResponse> CreateProductAsync(CreateProductRequest request)
+    public async Task<ProductResponse> CreateProductAsync(CreateProductRequest request, Guid userId)
     {
         var product = new Product
         {
@@ -45,7 +46,8 @@ public class ProductService : IProductService
             Price = request.Price,
             Quantity = request.Quantity,
             ImageUrl = request.ImageUrl,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            CreatedByUserId = userId
         };
 
         await _unitOfWork.Products.AddAsync(product);
@@ -54,12 +56,17 @@ public class ProductService : IProductService
         return MapToResponse(product);
     }
 
-    public async Task<ProductResponse?> UpdateProductAsync(Guid id, UpdateProductRequest request)
+    public async Task<ProductResponse?> UpdateProductAsync(Guid id, UpdateProductRequest request, Guid userId)
     {
         var product = await _unitOfWork.Products.GetByIdAsync(id);
         if (product == null || product.DeletedAt != null)
         {
             return null;
+        }
+
+        if (product.CreatedByUserId != userId)
+        {
+            throw new ForbiddenException("You do not have permission to modify this product.");
         }
 
         product.Name = request.Name;
@@ -75,12 +82,17 @@ public class ProductService : IProductService
         return MapToResponse(product);
     }
 
-    public async Task<bool> DeleteProductAsync(Guid id)
+    public async Task<bool> DeleteProductAsync(Guid id, Guid userId)
     {
         var product = await _unitOfWork.Products.GetByIdAsync(id);
         if (product == null || product.DeletedAt != null)
         {
             return false;
+        }
+
+        if (product.CreatedByUserId != userId)
+        {
+            throw new ForbiddenException("You do not have permission to delete this product.");
         }
 
         product.DeletedAt = DateTime.UtcNow;
@@ -101,7 +113,8 @@ public class ProductService : IProductService
             Quantity = product.Quantity,
             ImageUrl = product.ImageUrl,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            CreatedByUserId = product.CreatedByUserId
         };
     }
 }

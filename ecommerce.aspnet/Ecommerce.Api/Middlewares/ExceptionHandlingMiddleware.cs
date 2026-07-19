@@ -34,6 +34,7 @@ public class ExceptionHandlingMiddleware
         {
             NotFoundException => HttpStatusCode.NotFound,
             UnauthorizedException => HttpStatusCode.Unauthorized,
+            ForbiddenException => HttpStatusCode.Forbidden,
             BadRequestException => HttpStatusCode.BadRequest,
             _ => HttpStatusCode.InternalServerError
         };

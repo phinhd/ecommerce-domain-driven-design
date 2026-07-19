@@ -7,6 +7,7 @@ export interface Product {
   imageUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+  createdByUserId: string;
 }
 
 export interface PagedResponse<T> {

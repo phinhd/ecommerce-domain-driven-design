@@ -75,8 +75,12 @@ public class ProductControllerTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ECommerceDbContext>();
         
-        var product1 = new Product { Name = "Test Product 1", Description = "Desc 1", Price = 10m, Quantity = 10 };
-        var product2 = new Product { Name = "Test Product 2", Description = "Desc 2", Price = 20m, Quantity = 20 };
+        var user = new User { Email = "test@example.com", PasswordHash = "hash" };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var product1 = new Product { Name = "Test Product 1", Description = "Desc 1", Price = 10m, Quantity = 10, CreatedByUserId = user.Id };
+        var product2 = new Product { Name = "Test Product 2", Description = "Desc 2", Price = 20m, Quantity = 20, CreatedByUserId = user.Id };
         
         db.Products.AddRange(product1, product2);
         await db.SaveChangesAsync();

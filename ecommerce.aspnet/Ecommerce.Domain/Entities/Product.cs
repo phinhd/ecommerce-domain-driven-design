@@ -7,4 +7,6 @@ public class Product : BaseClass
     public decimal Price { get; set; }
     public int Quantity { get; set; }
     public string? ImageUrl { get; set; }
+    public Guid CreatedByUserId { get; set; }
+    public User CreatedByUser { get; set; } = null!;
 }
