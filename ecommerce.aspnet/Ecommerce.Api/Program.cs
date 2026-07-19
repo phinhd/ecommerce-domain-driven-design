@@ -40,8 +40,12 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
-builder.Services.AddHealthChecks()
-    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!);
+var healthChecksBuilder = builder.Services.AddHealthChecks();
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (!string.IsNullOrEmpty(connectionString))
+{
+    healthChecksBuilder.AddNpgSql(connectionString);
+}
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -78,7 +82,10 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ECommerceDbContext>();
-    dbContext.Database.Migrate();
+    if (app.Environment.EnvironmentName != "Testing")
+    {
+        dbContext.Database.Migrate();
+    }
     await DataSeeder.SeedAsync(scope.ServiceProvider);
 }
 

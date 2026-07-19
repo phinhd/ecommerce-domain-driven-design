@@ -3,8 +3,10 @@ using ECommerce.Application.DTOs.Common;
 using ECommerce.Application.DTOs.Product;
 using ECommerce.Domain.Entities;
 using ECommerce.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
@@ -28,6 +30,16 @@ public class ProductControllerTests : IAsyncLifetime
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureAppConfiguration((context, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    {"JwtSettings:SecretKey", "super-secret-key-that-is-at-least-16-characters-long"},
+                    {"JwtSettings:Issuer", "test-issuer"},
+                    {"JwtSettings:Audience", "test-audience"}
+                }!);
+            });
             builder.ConfigureServices(services =>
             {
                 var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ECommerceDbContext>));
