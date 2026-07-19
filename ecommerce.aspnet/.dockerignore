@@ -1,0 +1,10 @@
+**/.bin/
+**/.obj/
+**/.git/
+**/.vs/
+**/.vscode/
+**/bin/
+**/obj/
+**/TestResults/
+**/*.user
+**/*.lock

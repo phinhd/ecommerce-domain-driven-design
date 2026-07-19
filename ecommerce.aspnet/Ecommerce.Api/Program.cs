@@ -3,6 +3,8 @@ using Ecommerce.Api.Middlewares;
 using ECommerce.Infrastructure;
 using ECommerce.Application;
 using ECommerce.Infrastructure.Persistence.Seed;
+using Microsoft.EntityFrameworkCore;
+using ECommerce.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -73,7 +75,12 @@ var app = builder.Build();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-await DataSeeder.SeedAsync(app.Services);
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<ECommerceDbContext>();
+    dbContext.Database.Migrate();
+    await DataSeeder.SeedAsync(scope.ServiceProvider);
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

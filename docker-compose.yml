@@ -11,6 +11,37 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ECommerceDb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./ecommerce.aspnet
+      dockerfile: Dockerfile
+    container_name: ecommerce-api
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=ECommerceDb;Username=admin;Password=password123
+      - JwtSettings__SecretKey=/CcgY5CvJA4ySYE8Pga1qUU3wqz4N7qwTd0wj1bPKZ4=
+      - JwtSettings__Issuer=ECommerceApi
+      - JwtSettings__Audience=ECommerceApp
+      - AdminSeedSettings__Email=admin@ecommerce.com
+      - AdminSeedSettings__Password=AdminPassword123!
+      - Cors__AllowedOrigins__0=http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   postgres_data:
