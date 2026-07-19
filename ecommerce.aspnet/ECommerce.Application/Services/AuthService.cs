@@ -7,6 +7,7 @@ using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
 using Ecommerce.Domain.Interfaces;
 using System.IdentityModel.Tokens.Jwt;
+using Microsoft.Extensions.Configuration;
 
 namespace ECommerce.Application.Services;
 
@@ -15,12 +16,14 @@ public class AuthService : IAuthService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IConfiguration _configuration;
 
-    public AuthService(IUnitOfWork unitOfWork, IJwtTokenService jwtTokenService, IPasswordHasher passwordHasher)
+    public AuthService(IUnitOfWork unitOfWork, IJwtTokenService jwtTokenService, IPasswordHasher passwordHasher, IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
         _jwtTokenService = jwtTokenService;
         _passwordHasher = passwordHasher;
+        _configuration = configuration;
     }
 
     public async Task<UserResponse> RegisterAsync(RegisterRequest request)
@@ -49,13 +52,14 @@ public class AuthService : IAuthService
         var accessToken = _jwtTokenService.GenerateAccessToken(user);
         var refreshTokenRaw = _jwtTokenService.GenerateRefreshToken();
         
+        var expiryDays = int.Parse(_configuration["JwtSettings:RefreshTokenExpiryDays"] ?? "7");
         var refreshToken = new RefreshToken
         {
             Token = HashToken(refreshTokenRaw),
             JwtId = GetJwtIdFromToken(accessToken),
             UserId = user.Id,
             AddedDate = DateTime.UtcNow,
-            ExpiryDate = DateTime.UtcNow.AddDays(7)
+            ExpiryDate = DateTime.UtcNow.AddDays(expiryDays)
         };
 
         await _unitOfWork.RefreshTokens.AddAsync(refreshToken);
@@ -86,13 +90,14 @@ public class AuthService : IAuthService
         var newAccessToken = _jwtTokenService.GenerateAccessToken(user);
         var newRefreshTokenRaw = _jwtTokenService.GenerateRefreshToken();
 
+        var expiryDays = int.Parse(_configuration["JwtSettings:RefreshTokenExpiryDays"] ?? "7");
         var newRefreshToken = new RefreshToken
         {
             Token = HashToken(newRefreshTokenRaw),
             JwtId = GetJwtIdFromToken(newAccessToken),
             UserId = user.Id,
             AddedDate = DateTime.UtcNow,
-            ExpiryDate = DateTime.UtcNow.AddDays(7)
+            ExpiryDate = DateTime.UtcNow.AddDays(expiryDays)
         };
 
         await _unitOfWork.RefreshTokens.AddAsync(newRefreshToken);
