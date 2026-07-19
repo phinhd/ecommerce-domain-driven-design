@@ -49,7 +49,14 @@ cd ecommerce.aspnet && dotnet test
 ### (Optional) Frontend
 
 ```bash
-cd ecommerce.react && npm install && npm run dev
+cd ecommerce.react
+npm install
+```
+
+Create a `.env` file in the same directory as `.env.example`, then copy all contents from `.env.example` into `.env`.
+
+```bash
+npm run dev
 ```
 
 ## Architecture Decisions
