@@ -48,7 +48,6 @@ obj/
 .vscode/
 
 # Application Secrets & Local Configs
-appsettings.Development.json
 appsettings.Local.json
 *.secrets.json
 .microsoft.visualstudio.blazor.usersecrets.json
