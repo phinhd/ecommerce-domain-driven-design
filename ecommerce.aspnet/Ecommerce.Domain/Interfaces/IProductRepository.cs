@@ -4,5 +4,5 @@ namespace ECommerce.Domain.Interfaces;
 
 public interface IProductRepository : IRepository<Product>
 {
-    Task<IEnumerable<Product>> SearchByNameAsync(string name);
+    Task<(IEnumerable<Product> Items, int TotalCount)> SearchAsync(string? keyword, int page, int pageSize);
 }
