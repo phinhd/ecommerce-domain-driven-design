@@ -1,6 +1,6 @@
+using System.Reflection;
 using ECommerce.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
-using System.Reflection;
 
 namespace ECommerce.Infrastructure.Persistence;
 
