@@ -26,7 +26,7 @@ public static class DataSeeder
 
         await SeedAdminUserAsync(configuration, unitOfWork, passwordHasher, logger, cancellationToken);
 
-        if (configuration.GetValue("Seed:SampleData", false))
+        if (bool.TryParse(configuration["Seed:SampleData"], out var seedSampleData) && seedSampleData)
             await SeedSampleDataAsync(unitOfWork, passwordHasher, logger, cancellationToken);
     }
 
