@@ -1,32 +1,37 @@
+using System.Linq.Expressions;
 using ECommerce.Domain.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using ECommerce.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Infrastructure.Repositories;
 
 public class Repository<T> : IRepository<T> where T : class
 {
-    protected readonly ECommerceDbContext _context;
-    protected readonly DbSet<T> _dbSet;
+    protected ECommerceDbContext Context { get; }
+    protected DbSet<T> DbSet { get; }
 
     public Repository(ECommerceDbContext context)
     {
-        _context = context;
-        _dbSet = _context.Set<T>();
+        Context = context;
+        DbSet = context.Set<T>();
     }
 
-    public async Task<T?> GetByIdAsync(Guid id) => await _dbSet.FindAsync(id);
+    public virtual async Task<T?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => await DbSet.FindAsync([id], cancellationToken);
 
-    public async Task<IEnumerable<T>> GetAllAsync() => await _dbSet.ToListAsync();
+    public virtual async Task<IReadOnlyList<T>> GetAllAsync(CancellationToken cancellationToken = default)
+        => await DbSet.ToListAsync(cancellationToken);
 
-    public async Task<IEnumerable<T>> FindAsync(System.Linq.Expressions.Expression<Func<T, bool>> predicate)
-        => await _dbSet.Where(predicate).ToListAsync();
+    public virtual async Task<IReadOnlyList<T>> FindAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+        => await DbSet.Where(predicate).ToListAsync(cancellationToken);
 
-    public async Task AddAsync(T entity) => await _dbSet.AddAsync(entity);
+    public virtual Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+        => DbSet.AnyAsync(predicate, cancellationToken);
 
-    public void Update(T entity) => _dbSet.Update(entity);
+    public virtual async Task AddAsync(T entity, CancellationToken cancellationToken = default)
+        => await DbSet.AddAsync(entity, cancellationToken);
 
-    public void Remove(T entity) => _dbSet.Remove(entity);
+    public virtual void Update(T entity) => DbSet.Update(entity);
 
-    public IQueryable<T> GetQueryable() => _dbSet.AsQueryable();
+    public virtual void Remove(T entity) => DbSet.Remove(entity);
 }

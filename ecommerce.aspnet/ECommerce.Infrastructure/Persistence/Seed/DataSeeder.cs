@@ -7,127 +7,99 @@ using Microsoft.Extensions.Logging;
 
 namespace ECommerce.Infrastructure.Persistence.Seed;
 
+/// <summary>
+/// Idempotent seeding. The admin account is created only when AdminSeedSettings is configured;
+/// demo users and products only when "Seed:SampleData" is true (Development / Docker Compose).
+/// </summary>
 public static class DataSeeder
 {
-    public static async Task SeedAsync(IServiceProvider serviceProvider)
+    public const string SamplePassword = "Password123!";
+
+    public static async Task SeedAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
-        await SeedAdminUserAsync(serviceProvider);
-        await SeedSampleUsersAsync(serviceProvider);
-        await SeedSampleProductsAsync(serviceProvider);
+        await using var scope = serviceProvider.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var configuration = services.GetRequiredService<IConfiguration>();
+        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var passwordHasher = services.GetRequiredService<IPasswordHasher>();
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(DataSeeder));
+
+        await SeedAdminUserAsync(configuration, unitOfWork, passwordHasher, logger, cancellationToken);
+
+        if (configuration.GetValue("Seed:SampleData", false))
+            await SeedSampleDataAsync(unitOfWork, passwordHasher, logger, cancellationToken);
     }
 
-    public static async Task SeedAdminUserAsync(IServiceProvider serviceProvider)
+    private static async Task SeedAdminUserAsync(
+        IConfiguration configuration, IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ILogger logger, CancellationToken cancellationToken)
     {
-        using var scope = serviceProvider.CreateScope();
-        
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(DataSeeder));
-
         var adminEmail = configuration["AdminSeedSettings:Email"];
         var adminPassword = configuration["AdminSeedSettings:Password"];
 
-        if (string.IsNullOrEmpty(adminEmail) || string.IsNullOrEmpty(adminPassword))
+        if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
         {
-            logger.LogWarning("AdminSeedSettings:Email or AdminSeedSettings:Password is not configured. Skipping admin user seed.");
+            logger.LogInformation("AdminSeedSettings not configured; skipping admin seed.");
             return;
         }
 
-        var existingAdmin = await unitOfWork.Users.GetByEmailAsync(adminEmail);
-        
-        if (existingAdmin == null)
-        {
-            var adminUser = new User
-            {
-                Id = Guid.NewGuid(),
-                Email = adminEmail,
-                PasswordHash = passwordHasher.HashPassword(adminPassword),
-                Username = "Admin",
-                Type = UserTypeEnum.ADMIN,
-                Status = UserStatusEnum.ACTIVE,
-                CreatedAt = DateTime.UtcNow,
-                IsDeleted = false
-            };
+        if (await unitOfWork.Users.GetByEmailAsync(adminEmail, cancellationToken) is not null)
+            return;
 
-            await unitOfWork.Users.AddAsync(adminUser);
-            await unitOfWork.SaveChangesAsync();
-            
-            logger.LogInformation("Admin user seeded successfully with email: {AdminEmail}", adminEmail);
-        }
-        else
-        {
-            logger.LogInformation("Admin user with email {AdminEmail} already exists. Skipping seed.", adminEmail);
-        }
+        await unitOfWork.Users.AddAsync(NewUser(adminEmail, "Admin", adminPassword, UserTypeEnum.ADMIN, passwordHasher), cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Seeded admin user {AdminEmail}.", adminEmail);
     }
 
-    public static async Task SeedSampleUsersAsync(IServiceProvider serviceProvider)
+    private static async Task SeedSampleDataAsync(
+        IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, ILogger logger, CancellationToken cancellationToken)
     {
-        using var scope = serviceProvider.CreateScope();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(DataSeeder));
+        var customer1 = await EnsureUserAsync("customer1@example.com", "CustomerOne", unitOfWork, passwordHasher, cancellationToken);
+        var customer2 = await EnsureUserAsync("customer2@example.com", "CustomerTwo", unitOfWork, passwordHasher, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var sampleUsers = new[]
-        {
-            new { Email = "customer1@example.com", Username = "CustomerOne", Password = "Password123!" },
-            new { Email = "customer2@example.com", Username = "CustomerTwo", Password = "Password123!" }
-        };
+        if (await unitOfWork.Products.AnyAsync(_ => true, cancellationToken))
+            return;
 
-        foreach (var user in sampleUsers)
-        {
-            var existing = await unitOfWork.Users.GetByEmailAsync(user.Email);
-            if (existing == null)
-            {
-                var newUser = new User
-                {
-                    Id = Guid.NewGuid(),
-                    Email = user.Email,
-                    Username = user.Username,
-                    PasswordHash = passwordHasher.HashPassword(user.Password),
-                    Type = UserTypeEnum.CUSTOMER,
-                    Status = UserStatusEnum.ACTIVE,
-                    CreatedAt = DateTime.UtcNow,
-                    IsDeleted = false
-                };
-                await unitOfWork.Users.AddAsync(newUser);
-                logger.LogInformation("Sample user {Email} seeded.", user.Email);
-            }
-        }
-        await unitOfWork.SaveChangesAsync();
-    }
-
-    public static async Task SeedSampleProductsAsync(IServiceProvider serviceProvider)
-    {
-        using var scope = serviceProvider.CreateScope();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(DataSeeder));
-
-        var existingProducts = await unitOfWork.Products.GetAllAsync();
-        if (existingProducts.Any()) return;
-
-        var users = await unitOfWork.Users.GetAllAsync();
-        var customer1 = users.FirstOrDefault(u => u.Email == "customer1@example.com");
-        var customer2 = users.FirstOrDefault(u => u.Email == "customer2@example.com");
-
-        if (customer1 == null || customer2 == null) return;
-
-        var products = new List<Product>
-        {
-            new() { Id = Guid.NewGuid(), Name = "iPhone 15", Description = "Latest Apple Phone", Price = 999, Quantity = 10, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer1.Id },
-            new() { Id = Guid.NewGuid(), Name = "iPhone 14", Description = "Reliable Apple Phone", Price = 799, Quantity = 15, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer1.Id },
-            new() { Id = Guid.NewGuid(), Name = "Samsung Galaxy Phone", Description = "Android flagship", Price = 899, Quantity = 12, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer2.Id },
-            new() { Id = Guid.NewGuid(), Name = "Gaming Phone X", Description = "High performance phone", Price = 699, Quantity = 8, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer2.Id },
-            new() { Id = Guid.NewGuid(), Name = "Laptop Dell XPS", Description = "Premium Windows Laptop", Price = 1200, Quantity = 5, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer1.Id },
-            new() { Id = Guid.NewGuid(), Name = "Laptop HP Spectre", Description = "Sleek HP Laptop", Price = 1100, Quantity = 7, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer2.Id },
-            new() { Id = Guid.NewGuid(), Name = "Budget Laptop", Description = "Affordable laptop", Price = 400, Quantity = 20, ImageUrl = "https://picsum.photos/200", CreatedByUserId = customer1.Id }
-        };
+        var now = DateTime.UtcNow;
+        Product[] products =
+        [
+            Product.Create(customer1.Id, "iPhone 15", "Latest Apple phone", 999, 10, "https://picsum.photos/seed/iphone15/400", now),
+            Product.Create(customer1.Id, "iPhone 14", "Reliable Apple phone", 799, 15, "https://picsum.photos/seed/iphone14/400", now),
+            Product.Create(customer2.Id, "Samsung Galaxy Phone", "Android flagship", 899, 12, "https://picsum.photos/seed/galaxy/400", now),
+            Product.Create(customer2.Id, "Gaming Phone X", "High performance phone", 699, 8, "https://picsum.photos/seed/gaming/400", now),
+            Product.Create(customer1.Id, "Laptop Dell XPS", "Premium Windows laptop", 1200, 5, "https://picsum.photos/seed/xps/400", now),
+            Product.Create(customer2.Id, "Laptop HP Spectre", "Sleek HP laptop", 1100, 7, "https://picsum.photos/seed/spectre/400", now),
+            Product.Create(customer1.Id, "Budget Laptop", "Affordable laptop", 400, 20, "https://picsum.photos/seed/budget/400", now)
+        ];
 
         foreach (var product in products)
-        {
-            await unitOfWork.Products.AddAsync(product);
-        }
-        await unitOfWork.SaveChangesAsync();
-        logger.LogInformation("Sample products seeded.");
+            await unitOfWork.Products.AddAsync(product, cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Seeded {Count} sample products.", products.Length);
     }
+
+    private static async Task<User> EnsureUserAsync(
+        string email, string username, IUnitOfWork unitOfWork, IPasswordHasher passwordHasher, CancellationToken cancellationToken)
+    {
+        var existing = await unitOfWork.Users.GetByEmailAsync(email, cancellationToken);
+        if (existing is not null)
+            return existing;
+
+        var user = NewUser(email, username, SamplePassword, UserTypeEnum.CUSTOMER, passwordHasher);
+        await unitOfWork.Users.AddAsync(user, cancellationToken);
+        return user;
+    }
+
+    private static User NewUser(string email, string username, string password, UserTypeEnum type, IPasswordHasher passwordHasher) => new()
+    {
+        Id = Guid.NewGuid(),
+        Email = User.NormalizeEmail(email),
+        Username = username,
+        PasswordHash = passwordHasher.HashPassword(password),
+        Type = type,
+        Status = UserStatusEnum.ACTIVE,
+        CreatedAt = DateTime.UtcNow,
+        IsDeleted = false
+    };
 }

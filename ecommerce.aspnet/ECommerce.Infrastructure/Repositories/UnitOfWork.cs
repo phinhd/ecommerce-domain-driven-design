@@ -1,10 +1,13 @@
 using ECommerce.Domain.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using ECommerce.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ECommerce.Infrastructure.Repositories;
 
-public class UnitOfWork : IUnitOfWork
+/// <summary>
+/// One DbContext per request; the DI container owns its lifetime, so the unit of work does not dispose it.
+/// </summary>
+public sealed class UnitOfWork : IUnitOfWork
 {
     private readonly ECommerceDbContext _context;
     private IUserRepository? _userRepository;
@@ -25,14 +28,21 @@ public class UnitOfWork : IUnitOfWork
 
     public IRefreshTokenRepository RefreshTokens => _refreshTokenRepository ??= new RefreshTokenRepository(_context);
 
-    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        return await _context.SaveChangesAsync(cancellationToken);
-    }
+    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        => _context.SaveChangesAsync(cancellationToken);
 
-    public void Dispose()
+    public async Task<IUnitOfWorkTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        => new EfTransaction(await _context.Database.BeginTransactionAsync(cancellationToken));
+
+    private sealed class EfTransaction : IUnitOfWorkTransaction
     {
-        _context.Dispose();
-        GC.SuppressFinalize(this);
+        private readonly IDbContextTransaction _transaction;
+
+        public EfTransaction(IDbContextTransaction transaction) => _transaction = transaction;
+
+        public Task CommitAsync(CancellationToken cancellationToken = default) => _transaction.CommitAsync(cancellationToken);
+
+        // Disposing an uncommitted transaction rolls it back.
+        public ValueTask DisposeAsync() => _transaction.DisposeAsync();
     }
 }

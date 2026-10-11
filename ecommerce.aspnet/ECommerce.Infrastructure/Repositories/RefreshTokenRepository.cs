@@ -1,32 +1,29 @@
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using ECommerce.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Infrastructure.Repositories;
 
-public class RefreshTokenRepository : Repository<RefreshToken>, IRefreshTokenRepository
+public sealed class RefreshTokenRepository : Repository<RefreshToken>, IRefreshTokenRepository
 {
     public RefreshTokenRepository(ECommerceDbContext context) : base(context)
     {
     }
 
-    public async Task<RefreshToken?> GetByTokenHashAsync(string tokenHash)
-    {
-        return await _dbSet.FirstOrDefaultAsync(rt => rt.Token == tokenHash);
-    }
+    public Task<RefreshToken?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+        => DbSet.FirstOrDefaultAsync(rt => rt.Token == tokenHash, cancellationToken);
 
-    public async Task RevokeAllByUserIdAsync(Guid userId)
+    public Task<bool> IsJwtRevokedAsync(string jwtId, CancellationToken cancellationToken = default)
+        => DbSet.AnyAsync(rt => rt.JwtId == jwtId && rt.IsRevoked, cancellationToken);
+
+    public async Task RevokeAllByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var tokensToRevoke = await _dbSet
+        var activeTokens = await DbSet
             .Where(rt => rt.UserId == userId && !rt.IsRevoked)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
-        foreach (var token in tokensToRevoke)
-        {
-            token.IsRevoked = true;
-        }
-
-        _dbSet.UpdateRange(tokensToRevoke);
+        foreach (var token in activeTokens)
+            token.Revoke();
     }
 }

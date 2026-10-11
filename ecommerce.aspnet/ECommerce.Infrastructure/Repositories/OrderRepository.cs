@@ -5,19 +5,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Infrastructure.Repositories;
 
-public class OrderRepository : Repository<Order>, IOrderRepository
+public sealed class OrderRepository : Repository<Order>, IOrderRepository
 {
     public OrderRepository(ECommerceDbContext context) : base(context)
     {
     }
 
-    public async Task<IEnumerable<Order>> GetByUserIdAsync(Guid userId)
-    {
-        return await _dbSet
+    public async Task<IReadOnlyList<Order>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
+        => await DbSet
+            .AsNoTracking()
             .Include(o => o.OrderItems)
             .ThenInclude(oi => oi.Product)
             .Where(o => o.UserId == userId)
             .OrderByDescending(o => o.CreatedAt)
-            .ToListAsync();
-    }
+            .AsSplitQuery()
+            .ToListAsync(cancellationToken);
 }

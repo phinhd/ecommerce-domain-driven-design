@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace ECommerce.Infrastructure.Persistence;
 
-public class ECommerceDbContext : DbContext
+public sealed class ECommerceDbContext : DbContext
 {
     public ECommerceDbContext(DbContextOptions<ECommerceDbContext> options) : base(options)
     {

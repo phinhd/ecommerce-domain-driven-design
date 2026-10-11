@@ -1,14 +1,13 @@
-using ECommerce.Domain.Interfaces;
 using BCrypt.Net;
+using ECommerce.Domain.Interfaces;
 
 namespace ECommerce.Infrastructure.Services;
 
-public class PasswordHasherService : IPasswordHasher
+public sealed class PasswordHasherService : IPasswordHasher
 {
-    public string HashPassword(string password)
-    {
-        return BCrypt.Net.BCrypt.HashPassword(password);
-    }
+    private const int WorkFactor = 12;
+
+    public string HashPassword(string password) => BCrypt.Net.BCrypt.HashPassword(password, WorkFactor);
 
     public bool VerifyPassword(string password, string passwordHash)
     {
@@ -16,8 +15,9 @@ public class PasswordHasherService : IPasswordHasher
         {
             return BCrypt.Net.BCrypt.Verify(password, passwordHash);
         }
-        catch (BcryptAuthenticationException)
+        catch (Exception ex) when (ex is SaltParseException or BcryptAuthenticationException)
         {
+            // A malformed hash is treated as a failed login, never as a server error.
             return false;
         }
     }

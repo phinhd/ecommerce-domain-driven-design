@@ -1,18 +1,19 @@
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using ECommerce.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Infrastructure.Repositories;
 
-public class UserRepository : Repository<User>, IUserRepository
+public sealed class UserRepository : Repository<User>, IUserRepository
 {
     public UserRepository(ECommerceDbContext context) : base(context)
     {
     }
 
-    public async Task<User?> GetByEmailAsync(string email)
+    public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
-        return await _dbSet.FirstOrDefaultAsync(u => u.Email == email);
+        var normalized = User.NormalizeEmail(email);
+        return DbSet.FirstOrDefaultAsync(u => u.Email == normalized, cancellationToken);
     }
 }
