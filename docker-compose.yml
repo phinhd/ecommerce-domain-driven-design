@@ -1,8 +1,6 @@
 services:
   postgres:
     image: postgres:17
-    container_name: ecommerce-postgres
-    restart: always
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password123
@@ -21,16 +19,16 @@ services:
     build:
       context: ./ecommerce.aspnet
       dockerfile: Dockerfile
-    container_name: ecommerce-api
     ports:
       - "5000:8080"
     environment:
+      # Local-only values. Use a secret store (user-secrets, Key Vault, CI secrets) for real deployments.
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=ECommerceDb;Username=admin;Password=password123
-      - JwtSettings__SecretKey=/CcgY5CvJA4ySYE8Pga1qUU3wqz4N7qwTd0wj1bPKZ4=
-      - JwtSettings__Issuer=ECommerceApi
-      - JwtSettings__Audience=ECommerceApp
-      - AdminSeedSettings__Email=admin@ecommerce.com
+      - JwtSettings__SecretKey=docker-compose-dev-secret-key-0123456789abcdef
+      - Database__ApplyMigrationsOnStartup=true
+      - Seed__SampleData=true
+      - AdminSeedSettings__Email=admin@ecommerce.local
       - AdminSeedSettings__Password=AdminPassword123!
       - Cors__AllowedOrigins__0=http://localhost:5173
     depends_on:
