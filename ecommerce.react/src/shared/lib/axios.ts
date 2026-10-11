@@ -98,21 +98,25 @@ apiClient.interceptors.response.use(
     }
 
     const status = error.response?.status;
-    const backendMessage = error.response?.data?.message as string | undefined;
+    const backendMessage = getProblemMessage(error.response?.data);
 
     if (status === 401) {
       // 401 that reached here means no refresh possible
       emitToast(backendMessage ?? 'Your session has expired. Please log in again.');
     } else if (status === 403) {
-      emitToast(backendMessage ?? 'Bạn không có quyền thực hiện hành động này.');
+      emitToast(backendMessage ?? 'You do not have permission to perform this action.');
     } else if (status === 404) {
-      emitToast(backendMessage ?? 'Không tìm thấy tài nguyên.');
+      emitToast(backendMessage ?? 'The requested resource was not found.');
+    } else if (status === 409) {
+      emitToast(backendMessage ?? 'This resource already exists.');
+    } else if (status === 429) {
+      emitToast('Too many requests. Please wait a moment and try again.');
     } else if (status === 400) {
-      emitToast(backendMessage ?? 'Yêu cầu không hợp lệ.');
+      emitToast(backendMessage ?? 'The request is invalid.');
     } else if (status && status >= 500) {
-      emitToast(backendMessage ?? 'Đã xảy ra lỗi máy chủ. Vui lòng thử lại sau.');
+      emitToast('Something went wrong on the server. Please try again later.');
     } else if (!error.response) {
-      emitToast('Không thể kết nối tới máy chủ.');
+      emitToast('Cannot reach the server.');
     } else if (backendMessage) {
       emitToast(backendMessage);
     }
@@ -120,6 +124,20 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * The API returns RFC 7807 problem details: `detail` for business errors and
+ * `errors` (field -> messages) for validation failures.
+ */
+const getProblemMessage = (data: unknown): string | undefined => {
+  if (!data || typeof data !== 'object') return undefined;
+  const problem = data as { detail?: string; title?: string; errors?: Record<string, string[]> };
+  if (problem.errors) {
+    const first = Object.values(problem.errors).flat()[0];
+    if (first) return first;
+  }
+  return problem.detail ?? undefined;
+};
 
 // Global token management to avoid circular dependencies with React Context
 let memoryAccessToken: string | null = null;
