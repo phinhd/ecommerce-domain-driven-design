@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="ECommerce.Api/ECommerce.Api.csproj" />
+    <Project Path="ECommerce.Application/ECommerce.Application.csproj" />
+    <Project Path="ECommerce.Domain/ECommerce.Domain.csproj" />
+    <Project Path="ECommerce.Domain.Shared/ECommerce.Domain.Shared.csproj" />
+    <Project Path="ECommerce.Infrastructure/ECommerce.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="ECommerce.IntegrationTests/ECommerce.IntegrationTests.csproj" />
+    <Project Path="ECommerce.UnitTests/ECommerce.UnitTests.csproj" />
+  </Folder>
+</Solution>
