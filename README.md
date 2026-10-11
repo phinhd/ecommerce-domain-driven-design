@@ -1,139 +1,198 @@
-# E-Commerce API Assessment
+# E-Commerce API — .NET 10 Clean Architecture
 
-## Tech Stack
+[![CI](https://github.com/phinhd/ecommerce-domain-driven-design/actions/workflows/ci.yml/badge.svg)](https://github.com/phinhd/ecommerce-domain-driven-design/actions/workflows/ci.yml)
+![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791)
+![React 19](https://img.shields.io/badge/React-19-61DAFB)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-* **Backend**: .NET 10, Entity Framework Core
-* **Database**: PostgreSQL
-* **Frontend**: React 19, Vite, TypeScript, Tailwind CSS
+A marketplace-style REST API where users list products and buy from each other, with a React + TypeScript front end. The focus is on the parts that usually go wrong in real systems: **token security, overselling under concurrency, consistent error contracts and tests that hit a real database.**
 
-## Getting Started
+## Highlights
 
-### Prerequisites
+- **JWT + refresh token rotation with reuse detection.** Refresh tokens are single-use and stored as SHA-256 hashes. Replaying a used token revokes every session of that user, and revoked sessions are rejected even while their access token is still unexpired.
+- **No overselling.** Stock is reserved with one conditional `UPDATE … WHERE quantity >= n` inside the same transaction as the order insert. An integration test fires 8 concurrent orders at 3 units of stock and asserts exactly 3 succeed.
+- **Rich domain where it matters.** `Order.Place` captures the unit price at order time and computes totals; `Product` enforces its own invariants (non-negative price/stock, ownership, soft delete).
+- **One error contract.** Every failure is RFC 7807 `application/problem+json`, mapped centrally by an `IExceptionHandler`. Controllers contain no `try/catch`.
+- **Fail-fast configuration.** JWT settings are validated at startup; a missing or short signing key stops the app.
+- **Hardening.** Rate-limited auth endpoints, case-insensitive email handling, `/health` with a PostgreSQL check, non-root Docker image.
+- **Tests on real infrastructure.** Integration tests run the actual API, migrations and middleware against PostgreSQL in Testcontainers.
+- **CI.** GitHub Actions: backend build with warnings as errors, format check, unit + integration tests; frontend lint + build; Docker image build.
 
-* .NET 10 SDK (for manual run)
-* Docker & Docker Compose
-* (Optional, for frontend) Node.js 20+
+## Architecture
 
-### Option A: Run with Docker (recommended)
+```mermaid
+flowchart LR
+    FE["React 19 + Vite<br/>TanStack Query · Axios"] -->|REST / JWT| API
+
+    subgraph Backend
+        API["ECommerce.Api<br/>Controllers · ProblemDetails · Rate limiting<br/>Token revocation middleware"]
+        APP["ECommerce.Application<br/>AuthService · ProductService · OrderService<br/>DTOs · validation · exceptions"]
+        DOM["ECommerce.Domain<br/>Order · Product · User · RefreshToken<br/>repository & UoW contracts"]
+        INF["ECommerce.Infrastructure<br/>EF Core · repositories · JWT · BCrypt<br/>migrations · seeding"]
+    end
+
+    API --> APP --> DOM
+    INF --> APP
+    INF --> DB[("PostgreSQL")]
+```
+
+| Project | Responsibility |
+| --- | --- |
+| `ECommerce.Domain` | Entities with behaviour, repository/unit-of-work/transaction contracts. No framework dependencies. |
+| `ECommerce.Domain.Shared` | Enums shared across layers. |
+| `ECommerce.Application` | Use cases, DTOs with validation, typed exceptions, settings, clock abstraction. |
+| `ECommerce.Infrastructure` | EF Core `DbContext`, repositories, unit of work, JWT and password hashing, migrations, seeding. |
+| `ECommerce.Api` | HTTP surface: controllers, auth, exception handling, rate limiting, health checks, Swagger. |
+
+## Getting started
+
+### Option A — Docker Compose (API + PostgreSQL)
 
 ```bash
 docker compose up --build
 ```
 
-API runs at: http://localhost:5000 — Swagger UI: http://localhost:5000/index.html
-Database migration and seeding run automatically on startup.
+- Swagger UI: http://localhost:5000
+- Health: http://localhost:5000/health
+- Migrations and demo data are applied automatically.
 
-### Option B: Run manually (for local development)
+### Option B — run the API locally
 
-1. Start PostgreSQL:
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+
 ```bash
 docker compose up -d postgres
+dotnet run --project ecommerce.aspnet/ECommerce.Api
 ```
 
+Swagger UI: http://localhost:5117 (Development applies migrations and seeds demo data).
 
-2. Run the API:
-```bash
-dotnet run --project ecommerce.aspnet/Ecommerce.Api
-```
-
-
-(database is migrated and seeded automatically on startup)
-API runs at: https://localhost:7155 (or http://localhost:5117) — Swagger UI: https://localhost:7155/index.html (or http://localhost:5117/index.html)
-
-### Run tests
-
-```bash
-cd ecommerce.aspnet && dotnet test
-```
-
-### (Optional) Frontend
+### Front end
 
 ```bash
 cd ecommerce.react
-npm install
+cp .env.example .env      # VITE_API_BASE_URL points at the API
+npm ci
+npm run dev               # http://localhost:5173
 ```
 
-Create a `.env` file in the same directory as `.env.example`, then copy all contents from `.env.example` into `.env`.
+### Demo accounts (Development only)
 
-```bash
-npm run dev
+| Email | Password |
+| --- | --- |
+| `customer1@example.com` | `Password123!` |
+| `customer2@example.com` | `Password123!` |
+| admin | see `AdminSeedSettings` in `appsettings.Development.json` |
+
+Seven sample products are created; search for "phone" or "laptop".
+
+## API
+
+| Method | Route | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/register` | — | Create a customer account |
+| `POST` | `/api/auth/login` | — | Access token (15 min) + refresh token |
+| `POST` | `/api/auth/refresh` | — | Rotate the token pair |
+| `POST` | `/api/auth/logout` | Bearer | Revoke the current session |
+| `GET` | `/api/auth/me` | Bearer | Current user |
+| `GET` | `/api/products?search=&page=&pageSize=&mine=&excludeMine=` | optional | Paged, case-insensitive search |
+| `GET` | `/api/products/{id}` | — | Product details |
+| `POST` | `/api/products` | Bearer | Create a product |
+| `PUT` | `/api/products/{id}` | Bearer (owner) | Update a product |
+| `DELETE` | `/api/products/{id}` | Bearer (owner) | Soft delete a product |
+| `POST` | `/api/orders` | Bearer | Place an order (reserves stock atomically) |
+| `GET` | `/api/orders/my` | Bearer | Current user's orders |
+| `GET` | `/health` | — | Liveness + database |
+
+Example error:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "Bad request",
+  "status": 400,
+  "detail": "Not enough stock. Available: 1",
+  "instance": "/api/orders"
+}
 ```
 
-## Architecture Decisions
+## Security design
 
-* **Repository Pattern & Unit of Work**: The project utilizes a Generic Repository combined with a Unit of Work to abstract the data access layer and manage transactions (via `DbContext.SaveChangesAsync`). The Generic Repository provides basic CRUD operations to prevent code duplication, while complex query logic is placed in specialized Repositories that inherit from it. The trade-off of this approach is that the Generic Repository might be considered a "leaky abstraction" if abused by returning `IQueryable` directly for the application layer to manipulate, but it compensates with rapid development speed and high consistency for standard operations.
-
-## Database Schema
-
-### RefreshToken Table
-
-| Column | Data Type | Constraints |
-| --- | --- | --- |
-| Id | UUID | PK, Default: gen_random_uuid() |
-| Token | VARCHAR(256) | Unique Index, Not Null |
-| JwtId | VARCHAR(100) | Not Null |
-| IsUsed | BOOLEAN | Default: false |
-| IsRevoked | BOOLEAN | Default: false |
-| AddedDate | TIMESTAMP | Default: now() |
-| ExpiryDate | TIMESTAMP | Not Null |
-| UserId | UUID | FK (Users.Id), ON DELETE CASCADE |
-
-### Indexes
-
-* `UNIQUE INDEX IX_RefreshToken_Token ON "RefreshTokens" ("Token")`
-* `INDEX IX_RefreshToken_UserId ON "RefreshTokens" ("UserId")`
-
-### ERD (Mermaid)
+### Refresh token rotation
 
 ```mermaid
-erDiagram
-    User ||--o{ RefreshToken : "has"
-    User {
-        uuid id
-        string email
-    }
-    RefreshToken {
-        uuid id
-        string token
-        string jwtId
-        boolean isUsed
-        boolean isRevoked
-        timestamp addedDate
-        timestamp expiryDate
-        uuid userId
-    }
+sequenceDiagram
+    participant C as Client
+    participant A as API
+    participant D as Database
+
+    C->>A: POST /auth/login
+    A->>D: store SHA-256(refresh₁), linked to access token jti₁
+    A-->>C: access₁ + refresh₁
+
+    C->>A: POST /auth/refresh (refresh₁)
+    A->>D: mark refresh₁ used, store SHA-256(refresh₂)
+    A-->>C: access₂ + refresh₂
+
+    Note over C,A: attacker replays the stolen refresh₁
+    C->>A: POST /auth/refresh (refresh₁)
+    A->>D: refresh₁ already used → revoke all of the user's tokens
+    A-->>C: 401
+    Note over A: access₂ is now rejected by TokenValidationMiddleware
 ```
 
-## Security: Refresh Token Mechanism
+- Only hashes are stored, so a database leak does not yield usable refresh tokens.
+- Login failures return the same 401 for unknown email, inactive account and wrong password.
+- Passwords are hashed with BCrypt (work factor 12).
 
-The system uses a **Refresh Token Rotation** mechanism to ensure login session security:
+### Stock reservation
 
-* **Hashing**: The Refresh Token is hashed using the SHA-256 algorithm before being saved to the database, preventing token exposure even in the event of unauthorized database access.
-* **Rotation**: Every time an Access Token expires and is successfully refreshed, a new Refresh Token is issued, and the old token is marked as `IsUsed`.
-* **Reuse Detection**: If a previously used Refresh Token (`IsUsed = true`) is sent to the system, this is considered a sign of an attack (token reuse). The system will immediately revoke (`Revoke`) all valid Refresh Tokens for that user to ensure security.
-* **Trade-off**: This mechanism significantly enhances security but requires the database to store more records (each refresh creates a new row). However, since a background cleanup job is not implemented within this scope, the `RefreshTokens` table may bloat over time (Known Limitation).
+```sql
+UPDATE "Products"
+SET "Quantity" = "Quantity" - @qty
+WHERE "Id" = @id AND "DeletedAt" IS NULL AND "Quantity" >= @qty;
+```
 
-### JWT Authentication & Token Validation
+Running this inside the order's transaction means a failed insert rolls the reservation back, and PostgreSQL's row lock serialises concurrent buyers, so stock never goes negative.
 
-* The application uses standard ASP.NET Core JWT Bearer authentication for token validation (signature, expiry).
-* A custom `TokenValidationMiddleware` is implemented to perform additional security checks, specifically verifying if a token has been revoked (e.g., via `RefreshToken.IsRevoked`). This ensures that even if a JWT is technically valid, it can be invalidated server-side if the user logs out or the token is compromised.
+## Configuration
 
-## Local Setup & Best Practices
+| Key | Notes |
+| --- | --- |
+| `ConnectionStrings:DefaultConnection` | PostgreSQL connection string. |
+| `JwtSettings:SecretKey` | **Required**, ≥ 32 characters. Use user-secrets or `JwtSettings__SecretKey`; never commit a real key. |
+| `JwtSettings:DurationInMinutes` / `RefreshTokenExpiryDays` | Access and refresh token lifetimes (15 min / 7 days). |
+| `Cors:AllowedOrigins` | Front-end origins. |
+| `Database:ApplyMigrationsOnStartup` | `true` in Development/Compose; run migration bundles from CI/CD in production. |
+| `Seed:SampleData` | Demo users and products (Development only). |
+| `AdminSeedSettings:Email` / `Password` | Optional admin account. |
+| `RateLimiting:AuthPermitLimit` | Auth requests per minute per IP (default 20). |
 
-* **Environment Configuration**: The admin password (in `AdminSeedSettings`) and DB password (in `ConnectionStrings`) are currently configured in `appsettings.Development.json` for local development purposes. For Production environments, NEVER commit these secrets to Git. Please use **User Secrets (`dotnet user-secrets`)** for more secure local development, or Secret management systems (e.g., Azure Key Vault, Environment Variables, `.env` files combined with Docker) to inject values when launching the application.
+## Testing
 
-## Seed Data
+```bash
+cd ecommerce.aspnet
+dotnet test ECommerce.slnx        # integration tests need Docker running
+```
 
-The system automatically seeds data on startup (if it doesn't already exist):
+| Suite | Covers |
+| --- | --- |
+| Unit (`ECommerce.UnitTests`) | Login/registration rules, token rotation and reuse detection, refresh token hashing, order placement and rollback, ownership checks, paging limits, domain invariants |
+| Integration (`ECommerce.IntegrationTests`) | Full auth flow incl. replay and logout revocation, 400/403/409 problem responses, case-insensitive search, stock decrement, **concurrent orders never oversell** |
 
-* **Sample Users**:
-* `customer1@example.com` / `Password123!`
-* `customer2@example.com` / `Password123!`
+## Design decisions & trade-offs
 
+- **Generic repository + unit of work.** Keeps CRUD consistent and testable. The generic repository returns materialised lists rather than `IQueryable`, so query logic stays inside the specialised repositories.
+- **Set-based stock update instead of optimistic concurrency.** One round-trip, no retries, and it needs no schema change. The trade-off is that the tracked `Product` entity is not updated in memory during that request.
+- **Server-side revocation check per request.** Adds one indexed lookup per authenticated request in exchange for being able to kill a session immediately.
 
-* **Sample Products**:
-* Includes 7 sample products (iPhone, Samsung, Laptop...).
-* **Hint**: Try searching for the keywords "Phone" or "Laptop" to test the product search functionality.
+## Known limitations
 
+- Used and expired refresh tokens are not purged yet; a scheduled cleanup job would keep the table small.
+- An order contains a single product line; a cart with multiple lines is the next step.
+- Order status transitions (paid, shipped, cancelled) are modelled but not exposed through the API.
 
-* **Admin**: See the configuration in `appsettings.Development.json`.
+## License
+
+[MIT](LICENSE)
