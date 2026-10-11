@@ -1,4 +1,4 @@
-﻿namespace ECommerce.Domain.Shared.Enums;
+namespace ECommerce.Domain.Shared.Enums;
 
 public enum UserStatusEnum
 {
