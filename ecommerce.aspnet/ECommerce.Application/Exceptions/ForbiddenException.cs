@@ -1,6 +1,6 @@
 namespace ECommerce.Application.Exceptions;
 
-public class ForbiddenException : Exception
+public sealed class ForbiddenException : AppException
 {
     public ForbiddenException(string message) : base(message) { }
 }

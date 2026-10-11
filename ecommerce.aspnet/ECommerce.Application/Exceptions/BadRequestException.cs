@@ -1,6 +1,6 @@
 namespace ECommerce.Application.Exceptions;
 
-public class BadRequestException : Exception
+public sealed class BadRequestException : AppException
 {
     public BadRequestException(string message) : base(message) { }
 }

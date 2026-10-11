@@ -4,6 +4,6 @@ namespace ECommerce.Application.Interfaces;
 
 public interface IOrderService
 {
-    Task<OrderResponse> CreateOrderAsync(Guid userId, Guid productId, int quantity);
-    Task<IEnumerable<OrderResponse>> GetMyOrdersAsync(Guid userId);
+    Task<OrderResponse> CreateOrderAsync(Guid userId, CreateOrderRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken cancellationToken = default);
 }

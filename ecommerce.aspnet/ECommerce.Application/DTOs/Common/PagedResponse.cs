@@ -1,14 +1,24 @@
 namespace ECommerce.Application.DTOs.Common;
 
-public class PagedResponse<T>
+public static class Pagination
 {
-    public IEnumerable<T> Items { get; set; } = new List<T>();
-    public int Page { get; set; }
-    public int PageSize { get; set; }
-    public int TotalCount { get; set; }
-    public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+    public const int DefaultPageSize = 10;
+    public const int MaxPageSize = 100;
+}
 
-    public PagedResponse(IEnumerable<T> items, int totalCount, int page, int pageSize)
+public sealed class PagedResponse<T>
+{
+    public IReadOnlyList<T> Items { get; init; } = [];
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+    public int TotalCount { get; init; }
+    public int TotalPages => PageSize == 0 ? 0 : (int)Math.Ceiling((double)TotalCount / PageSize);
+
+    public PagedResponse()
+    {
+    }
+
+    public PagedResponse(IReadOnlyList<T> items, int totalCount, int page, int pageSize)
     {
         Items = items;
         TotalCount = totalCount;

@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ECommerce.Application.DTOs.Auth;
 
-public class LoginRequest
+public sealed class LoginRequest
 {
     [Required]
     [EmailAddress]

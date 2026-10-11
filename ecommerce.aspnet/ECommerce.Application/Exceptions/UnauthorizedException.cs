@@ -1,6 +1,6 @@
 namespace ECommerce.Application.Exceptions;
 
-public class UnauthorizedException : Exception
+public sealed class UnauthorizedException : AppException
 {
     public UnauthorizedException(string message) : base(message) { }
 }

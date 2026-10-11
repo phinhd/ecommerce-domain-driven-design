@@ -1,140 +1,149 @@
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using ECommerce.Application.Common;
 using ECommerce.Application.DTOs.Auth;
+using ECommerce.Application.Exceptions;
 using ECommerce.Application.Interfaces;
 using ECommerce.Domain.Entities;
 using ECommerce.Domain.Interfaces;
-using Ecommerce.Domain.Interfaces;
-using System.IdentityModel.Tokens.Jwt;
-using Microsoft.Extensions.Configuration;
+using ECommerce.Domain.Shared.Enums;
+using Microsoft.Extensions.Options;
 
 namespace ECommerce.Application.Services;
 
-public class AuthService : IAuthService
+public sealed class AuthService : IAuthService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IPasswordHasher _passwordHasher;
-    private readonly IConfiguration _configuration;
+    private readonly IDateTimeProvider _clock;
+    private readonly JwtSettings _jwtSettings;
 
-    public AuthService(IUnitOfWork unitOfWork, IJwtTokenService jwtTokenService, IPasswordHasher passwordHasher, IConfiguration configuration)
+    public AuthService(
+        IUnitOfWork unitOfWork,
+        IJwtTokenService jwtTokenService,
+        IPasswordHasher passwordHasher,
+        IDateTimeProvider clock,
+        IOptions<JwtSettings> jwtSettings)
     {
         _unitOfWork = unitOfWork;
         _jwtTokenService = jwtTokenService;
         _passwordHasher = passwordHasher;
-        _configuration = configuration;
+        _clock = clock;
+        _jwtSettings = jwtSettings.Value;
     }
 
-    public async Task<UserResponse> RegisterAsync(RegisterRequest request)
+    public async Task<UserResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
-        var existingUser = await _unitOfWork.Users.GetByEmailAsync(request.Email);
-        if (existingUser != null) throw new InvalidOperationException("Email already exists.");
+        var email = User.NormalizeEmail(request.Email);
+
+        if (await _unitOfWork.Users.GetByEmailAsync(email, cancellationToken) is not null)
+            throw new ConflictException("Email already exists.");
 
         var user = new User
         {
-            Email = request.Email,
-            PasswordHash = _passwordHasher.HashPassword(request.Password)
+            Id = Guid.NewGuid(),
+            Email = email,
+            PasswordHash = _passwordHasher.HashPassword(request.Password),
+            Type = UserTypeEnum.CUSTOMER,
+            Status = UserStatusEnum.ACTIVE,
+            CreatedAt = _clock.UtcNow
         };
 
-        await _unitOfWork.Users.AddAsync(user);
-        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.Users.AddAsync(user, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new UserResponse { Id = user.Id, Email = user.Email };
+        return ToUserResponse(user);
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request)
+    public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
-        var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
-        if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
-            throw new Exceptions.UnauthorizedException("Invalid credentials.");
+        var user = await _unitOfWork.Users.GetByEmailAsync(User.NormalizeEmail(request.Email), cancellationToken);
 
-        var accessToken = _jwtTokenService.GenerateAccessToken(user);
-        var refreshTokenRaw = _jwtTokenService.GenerateRefreshToken();
-        
-        var expiryDays = int.Parse(_configuration["JwtSettings:RefreshTokenExpiryDays"] ?? "7");
-        var refreshToken = new RefreshToken
-        {
-            Token = HashToken(refreshTokenRaw),
-            JwtId = GetJwtIdFromToken(accessToken),
-            UserId = user.Id,
-            AddedDate = DateTime.UtcNow,
-            ExpiryDate = DateTime.UtcNow.AddDays(expiryDays)
-        };
+        // One message for every failure so the endpoint does not reveal which emails exist.
+        if (user is null || !user.IsActive() || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+            throw new UnauthorizedException("Invalid credentials.");
 
-        await _unitOfWork.RefreshTokens.AddAsync(refreshToken);
-        await _unitOfWork.SaveChangesAsync();
-
-        return new AuthResponse { AccessToken = accessToken, RefreshToken = refreshTokenRaw, ExpiresIn = 900 };
+        var response = await IssueTokensAsync(user, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return response;
     }
 
-    public async Task<AuthResponse> RefreshTokenAsync(RefreshRequest request)
+    /// <summary>
+    /// Refresh token rotation with reuse detection: every refresh token works once.
+    /// Presenting an already-used token means it leaked, so the whole session family is revoked.
+    /// </summary>
+    public async Task<AuthResponse> RefreshTokenAsync(RefreshRequest request, CancellationToken cancellationToken = default)
     {
-        var hashedToken = HashToken(request.RefreshToken);
-        var storedToken = await _unitOfWork.RefreshTokens.GetByTokenHashAsync(hashedToken);
+        var now = _clock.UtcNow;
+        var storedToken = await _unitOfWork.RefreshTokens.GetByTokenHashAsync(HashToken(request.RefreshToken), cancellationToken);
 
-        if (storedToken == null || storedToken.IsRevoked || storedToken.ExpiryDate < DateTime.UtcNow)
-            throw new UnauthorizedAccessException("Invalid token.");
+        if (storedToken is null || storedToken.IsRevoked || storedToken.ExpiryDate <= now)
+            throw new UnauthorizedException("Invalid refresh token.");
 
         if (storedToken.IsUsed)
         {
-            await _unitOfWork.RefreshTokens.RevokeAllByUserIdAsync(storedToken.UserId);
-            await _unitOfWork.SaveChangesAsync();
-            throw new UnauthorizedAccessException("Replay attack detected.");
+            await _unitOfWork.RefreshTokens.RevokeAllByUserIdAsync(storedToken.UserId, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            throw new UnauthorizedException("Refresh token reuse detected. All sessions have been revoked.");
         }
 
-        storedToken.IsUsed = true;
-        var user = await _unitOfWork.Users.GetByIdAsync(storedToken.UserId);
-        if (user == null) throw new UnauthorizedAccessException("User not found.");
+        var user = await _unitOfWork.Users.GetByIdAsync(storedToken.UserId, cancellationToken);
+        if (user is null || !user.IsActive())
+            throw new UnauthorizedException("Invalid refresh token.");
 
-        var newAccessToken = _jwtTokenService.GenerateAccessToken(user);
-        var newRefreshTokenRaw = _jwtTokenService.GenerateRefreshToken();
+        storedToken.MarkUsed();
+        var response = await IssueTokensAsync(user, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return response;
+    }
 
-        var expiryDays = int.Parse(_configuration["JwtSettings:RefreshTokenExpiryDays"] ?? "7");
-        var newRefreshToken = new RefreshToken
+    public async Task LogoutAsync(string refreshToken, CancellationToken cancellationToken = default)
+    {
+        var storedToken = await _unitOfWork.RefreshTokens.GetByTokenHashAsync(HashToken(refreshToken), cancellationToken);
+        if (storedToken is null || storedToken.IsRevoked)
+            return;
+
+        storedToken.Revoke();
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<UserResponse> GetCurrentUserAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _unitOfWork.Users.GetByIdAsync(userId, cancellationToken)
+            ?? throw new NotFoundException("User not found.");
+
+        return ToUserResponse(user);
+    }
+
+    private async Task<AuthResponse> IssueTokensAsync(User user, CancellationToken cancellationToken)
+    {
+        var now = _clock.UtcNow;
+        var accessToken = _jwtTokenService.GenerateAccessToken(user);
+        var rawRefreshToken = _jwtTokenService.GenerateRefreshToken();
+
+        await _unitOfWork.RefreshTokens.AddAsync(new RefreshToken
         {
-            Token = HashToken(newRefreshTokenRaw),
-            JwtId = GetJwtIdFromToken(newAccessToken),
+            Id = Guid.NewGuid(),
+            Token = HashToken(rawRefreshToken),
+            JwtId = accessToken.JwtId,
             UserId = user.Id,
-            AddedDate = DateTime.UtcNow,
-            ExpiryDate = DateTime.UtcNow.AddDays(expiryDays)
-        };
+            AddedDate = now,
+            CreatedAt = now,
+            ExpiryDate = now.AddDays(_jwtSettings.RefreshTokenExpiryDays)
+        }, cancellationToken);
 
-        await _unitOfWork.RefreshTokens.AddAsync(newRefreshToken);
-        await _unitOfWork.SaveChangesAsync();
-
-        return new AuthResponse { AccessToken = newAccessToken, RefreshToken = newRefreshTokenRaw, ExpiresIn = 900 };
-    }
-
-    public async Task LogoutAsync(string refreshToken)
-    {
-        var hashedToken = HashToken(refreshToken);
-        var storedToken = await _unitOfWork.RefreshTokens.GetByTokenHashAsync(hashedToken);
-        if (storedToken != null)
+        return new AuthResponse
         {
-            storedToken.IsRevoked = true;
-            await _unitOfWork.SaveChangesAsync();
-        }
+            AccessToken = accessToken.Token,
+            RefreshToken = rawRefreshToken,
+            ExpiresIn = _jwtSettings.DurationInMinutes * 60
+        };
     }
 
-    public async Task<UserResponse> GetCurrentUserAsync(Guid userId)
-    {
-        var user = await _unitOfWork.Users.GetByIdAsync(userId);
-        if (user == null) throw new KeyNotFoundException("User not found.");
-        return new UserResponse { Id = user.Id, Email = user.Email };
-    }
+    /// <summary>Refresh tokens are stored as SHA-256 hashes, so a database leak does not leak usable tokens.</summary>
+    internal static string HashToken(string token)
+        => Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
-    private string HashToken(string token)
-    {
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(token));
-        return Convert.ToBase64String(bytes);
-    }
-
-    private string GetJwtIdFromToken(string token)
-    {
-        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
-        return jwtToken.Id;
-    }
+    private static UserResponse ToUserResponse(User user) => new() { Id = user.Id, Email = user.Email };
 }

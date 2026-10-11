@@ -1,8 +1,10 @@
 namespace ECommerce.Application.DTOs.Auth;
 
-public class AuthResponse
+public sealed class AuthResponse
 {
-    public string AccessToken { get; set; } = null!;
-    public string RefreshToken { get; set; } = null!;
-    public int ExpiresIn { get; set; }
+    public string AccessToken { get; init; } = null!;
+    public string RefreshToken { get; init; } = null!;
+
+    /// <summary>Access token lifetime in seconds.</summary>
+    public int ExpiresIn { get; init; }
 }

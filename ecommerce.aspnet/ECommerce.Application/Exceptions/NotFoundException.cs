@@ -1,6 +1,6 @@
 namespace ECommerce.Application.Exceptions;
 
-public class NotFoundException : Exception
+public sealed class NotFoundException : AppException
 {
     public NotFoundException(string message) : base(message) { }
 }

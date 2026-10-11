@@ -1,3 +1,4 @@
+using ECommerce.Application.Common;
 using ECommerce.Application.DTOs.Common;
 using ECommerce.Application.DTOs.Product;
 using ECommerce.Application.Exceptions;
@@ -7,133 +8,88 @@ using ECommerce.Domain.Interfaces;
 
 namespace ECommerce.Application.Services;
 
-public class ProductService : IProductService
+public sealed class ProductService : IProductService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
 
-    public ProductService(IUnitOfWork unitOfWork)
+    public ProductService(IUnitOfWork unitOfWork, IDateTimeProvider clock)
     {
         _unitOfWork = unitOfWork;
+        _clock = clock;
     }
 
-    public async Task<PagedResponse<ProductResponse>> GetProductsAsync(string? search, int page, int pageSize, bool mine = false, bool excludeMine = false, Guid? currentUserId = null)
+    public async Task<PagedResponse<ProductResponse>> GetProductsAsync(ProductQuery query, Guid? currentUserId, CancellationToken cancellationToken = default)
     {
-        if ((mine || excludeMine) && !currentUserId.HasValue)
-        {
-            throw new BadRequestException("Current user is not authenticated.");
-        }
+        if (query.Mine && query.ExcludeMine)
+            throw new BadRequestException("'mine' and 'excludeMine' cannot be combined.");
 
-        Guid? filterUserId = null;
-        bool excludeUser = false;
+        if ((query.Mine || query.ExcludeMine) && currentUserId is null)
+            throw new UnauthorizedException("Sign in to filter by your own products.");
 
-        if (mine)
-        {
-            filterUserId = currentUserId;
-            excludeUser = false;
-        }
-        else if (excludeMine)
-        {
-            filterUserId = currentUserId;
-            excludeUser = true;
-        }
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize, 1, Pagination.MaxPageSize);
+        var filterUserId = query.Mine || query.ExcludeMine ? currentUserId : null;
 
-        var (items, totalCount) = await _unitOfWork.Products.SearchAsync(search, page, pageSize, filterUserId, excludeUser);
+        var (items, totalCount) = await _unitOfWork.Products.SearchAsync(
+            query.Search, page, pageSize, filterUserId, excludeUser: query.ExcludeMine, cancellationToken);
 
-        var productResponses = items.Select(MapToResponse);
-
-        return new PagedResponse<ProductResponse>(productResponses, totalCount, page, pageSize);
+        return new PagedResponse<ProductResponse>(items.Select(MapToResponse).ToList(), totalCount, page, pageSize);
     }
 
-    public async Task<ProductResponse?> GetProductByIdAsync(Guid id)
+    public async Task<ProductResponse> GetProductByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => MapToResponse(await GetActiveProductAsync(id, cancellationToken));
+
+    public async Task<ProductResponse> CreateProductAsync(CreateProductRequest request, Guid userId, CancellationToken cancellationToken = default)
     {
-        var product = await _unitOfWork.Products.GetByIdAsync(id);
-        if (product == null || product.DeletedAt != null)
-        {
-            return null;
-        }
+        var product = Product.Create(userId, request.Name, request.Description, request.Price, request.Quantity, request.ImageUrl, _clock.UtcNow);
+
+        await _unitOfWork.Products.AddAsync(product, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return MapToResponse(product);
     }
 
-    public async Task<ProductResponse> CreateProductAsync(CreateProductRequest request, Guid userId)
+    public async Task<ProductResponse> UpdateProductAsync(Guid id, UpdateProductRequest request, Guid userId, CancellationToken cancellationToken = default)
     {
-        var product = new Product
-        {
-            Id = Guid.NewGuid(),
-            Name = request.Name,
-            Description = request.Description,
-            Price = request.Price,
-            Quantity = request.Quantity,
-            ImageUrl = request.ImageUrl,
-            CreatedAt = DateTime.UtcNow,
-            CreatedByUserId = userId
-        };
-
-        await _unitOfWork.Products.AddAsync(product);
-        await _unitOfWork.SaveChangesAsync();
-
-        return MapToResponse(product);
-    }
-
-    public async Task<ProductResponse?> UpdateProductAsync(Guid id, UpdateProductRequest request, Guid userId)
-    {
-        var product = await _unitOfWork.Products.GetByIdAsync(id);
-        if (product == null || product.DeletedAt != null)
-        {
-            return null;
-        }
-
-        if (product.CreatedByUserId != userId)
-        {
+        var product = await GetActiveProductAsync(id, cancellationToken);
+        if (!product.IsOwnedBy(userId))
             throw new ForbiddenException("You do not have permission to modify this product.");
-        }
 
-        product.Name = request.Name;
-        product.Description = request.Description;
-        product.Price = request.Price;
-        product.Quantity = request.Quantity;
-        product.ImageUrl = request.ImageUrl;
-        product.UpdatedAt = DateTime.UtcNow;
-
-        _unitOfWork.Products.Update(product);
-        await _unitOfWork.SaveChangesAsync();
+        product.UpdateDetails(request.Name, request.Description, request.Price, request.Quantity, request.ImageUrl, _clock.UtcNow);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return MapToResponse(product);
     }
 
-    public async Task<bool> DeleteProductAsync(Guid id, Guid userId)
+    public async Task DeleteProductAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        var product = await _unitOfWork.Products.GetByIdAsync(id);
-        if (product == null || product.DeletedAt != null)
-        {
-            return false;
-        }
-
-        if (product.CreatedByUserId != userId)
-        {
+        var product = await GetActiveProductAsync(id, cancellationToken);
+        if (!product.IsOwnedBy(userId))
             throw new ForbiddenException("You do not have permission to delete this product.");
-        }
 
-        product.DeletedAt = DateTime.UtcNow;
-        _unitOfWork.Products.Update(product);
-        await _unitOfWork.SaveChangesAsync();
-
-        return true;
+        product.SoftDelete(_clock.UtcNow);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    private static ProductResponse MapToResponse(Product product)
+    private async Task<Product> GetActiveProductAsync(Guid id, CancellationToken cancellationToken)
     {
-        return new ProductResponse
-        {
-            Id = product.Id,
-            Name = product.Name,
-            Description = product.Description,
-            Price = product.Price,
-            Quantity = product.Quantity,
-            ImageUrl = product.ImageUrl,
-            CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt,
-            CreatedByUserId = product.CreatedByUserId
-        };
+        var product = await _unitOfWork.Products.GetByIdAsync(id, cancellationToken);
+        return product is null || product.IsDeleted()
+            ? throw new NotFoundException("Product not found.")
+            : product;
     }
+
+    private static ProductResponse MapToResponse(Product product) => new()
+    {
+        Id = product.Id,
+        Name = product.Name,
+        Description = product.Description,
+        Price = product.Price,
+        Quantity = product.Quantity,
+        ImageUrl = product.ImageUrl,
+        CreatedAt = product.CreatedAt,
+        UpdatedAt = product.UpdatedAt,
+        CreatedByUserId = product.CreatedByUserId
+    };
 }

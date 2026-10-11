@@ -1,6 +1,6 @@
 namespace ECommerce.Application.DTOs.Product;
 
-public class ProductResponse
+public sealed class ProductResponse
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = null!;

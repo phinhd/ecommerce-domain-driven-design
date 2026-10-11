@@ -1,6 +1,6 @@
 namespace ECommerce.Application.DTOs.Order;
 
-public class OrderItemResponse
+public sealed class OrderItemResponse
 {
     public Guid ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
